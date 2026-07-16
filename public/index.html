@@ -29,7 +29,6 @@
     height: 100vh;
   }
 
-  /* ---------- POV grid ---------- */
   .pov-grid {
     position: absolute;
     top: 0;
@@ -50,12 +49,10 @@
     min-width: 0;
   }
   
-  /* Container for the JS Player */
   .player-container {
     width: 100%;
     height: 100%;
   }
-  /* Force Twitch's generated iframe to fit */
   .player-container iframe {
     width: 100% !important;
     height: 100% !important;
@@ -103,7 +100,6 @@
     font-size: 12px;
   }
 
-  /* ---------- Chat placeholder ---------- */
   .chat-placeholder {
     position: absolute;
     box-sizing: border-box;
@@ -116,7 +112,6 @@
     z-index: 10;
   }
 
-  /* ---------- Interaction Overlay ---------- */
   .interaction-overlay {
     position: absolute;
     top: 0;
@@ -153,7 +148,7 @@
 </head>
 <body>
 
-  <!-- Click overlay to satisfy browser audio requirements -->
+  <!-- Overlay required by browser security to unlock audio -->
   <div class="interaction-overlay" id="interaction-overlay" onclick="enableAudio()">
     <button class="play-btn">Click to Start Audio & Autoplay</button>
   </div>
@@ -184,7 +179,7 @@
 
 <script>
   // ============================================================
-  // Chat placeholder styling (kept from your original)
+  // Chat placeholder styling
   // ============================================================
   const params = new URLSearchParams(location.search);
   function num(name, fallback) {
@@ -206,7 +201,7 @@
   document.getElementById("pov-grid").style.bottom = `${100 - chatTop}%`;
 
   // ============================================================
-  // Twitch Player Logic (Dynamic Channel Swapping)
+  // Twitch Player Logic
   // ============================================================
   const PARENT_DOMAIN = "streameruni.onrender.com";
   
@@ -217,17 +212,35 @@
   let currentMainChannel = null;
   let currentSideChannels = [null, null, null];
 
-  // Fired when the overlay is clicked
+  // Helper function: Repeatedly enforces play/mute state after a swap
+  function forcePlay(player, isMuted) {
+    let attempts = 0;
+    const interval = setInterval(() => {
+      if (!player) {
+        clearInterval(interval);
+        return;
+      }
+      
+      // Force the player to play and set the correct audio state
+      player.play();
+      player.setMuted(isMuted);
+      
+      attempts++;
+      // Stop trying after 8 seconds (assume it loaded by then)
+      if (attempts >= 8) {
+        clearInterval(interval);
+      }
+    }, 1000);
+  }
+
   function enableAudio() {
     userInteracted = true;
     document.getElementById("interaction-overlay").classList.add("hidden");
     
-    // Unmute main stream and force play
     if (mainPlayer) {
       mainPlayer.setMuted(false);
       mainPlayer.play();
     }
-    // Force play on sidebars (they stay muted)
     sidePlayers.forEach(p => {
       if (p) {
         p.setMuted(true);
@@ -245,15 +258,14 @@
       return;
     }
 
-    // If player doesn't exist yet, build it
     if (!mainPlayer) {
-      document.getElementById("main-player").innerHTML = ""; // Clear empty tile
+      document.getElementById("main-player").innerHTML = ""; 
       mainPlayer = new Twitch.Player("main-player", {
         channel: stream.channel,
         parent: [PARENT_DOMAIN],
         width: "100%",
         height: "100%",
-        muted: true, // Start muted so browser allows initialization
+        muted: true, 
         autoplay: true,
         controls: false
       });
@@ -267,21 +279,16 @@
       });
       currentMainChannel = stream.channel;
     } 
-    // If player exists but channel changed, SWAP instead of rebuilding
     else if (stream.channel !== currentMainChannel) {
       mainPlayer.setChannel(stream.channel);
       currentMainChannel = stream.channel;
       
-      // Ensure audio stays unmuted if user already clicked
       if (userInteracted) {
-        setTimeout(() => {
-          mainPlayer.setMuted(false);
-          mainPlayer.play();
-        }, 500); // slight delay lets the new stream buffer first
+        // Use the hammer function to ensure it plays after loading!
+        forcePlay(mainPlayer, false); // false = unmuted
       }
     }
 
-    // Update label text
     label.style.display = "flex";
     label.innerHTML = `<span class="live-dot"></span>${stream.channel} · ${stream.viewers.toLocaleString()} viewers`;
   }
@@ -299,7 +306,6 @@
         continue;
       }
 
-      // If player doesn't exist, build it
       if (!sidePlayers[i]) {
         document.getElementById(containerId).innerHTML = "";
         sidePlayers[i] = new Twitch.Player(containerId, {
@@ -307,7 +313,7 @@
           parent: [PARENT_DOMAIN],
           width: "100%",
           height: "100%",
-          muted: true, // Always muted
+          muted: true, 
           autoplay: true,
           controls: false
         });
@@ -317,13 +323,13 @@
         });
         currentSideChannels[i] = stream.channel;
       }
-      // If player exists but channel changed, SWAP
       else if (stream.channel !== currentSideChannels[i]) {
         sidePlayers[i].setChannel(stream.channel);
         currentSideChannels[i] = stream.channel;
         
         if (userInteracted) {
-          setTimeout(() => sidePlayers[i].play(), 500);
+           // Use the hammer function for sidebars too (keeping them muted)
+          forcePlay(sidePlayers[i], true); // true = muted
         }
       }
 
@@ -345,7 +351,7 @@
   }
 
   refresh();
-  setInterval(refresh, 60 * 1000); // Poll every 60s
+  setInterval(refresh, 60 * 1000); 
 </script>
 </body>
 </html>
