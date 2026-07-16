@@ -1,244 +1,885 @@
-<script>
-const PARENT_DOMAIN = "streameruni.onrender.com";
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Streamer University — Live Director</title>
 
-let userInteracted = false;
-let mainPlayer = null;
-let sidePlayers = [null, null, null];
+<style>
+:root {
+  color-scheme: dark;
+  --chat-border-width:3px;
+  --chat-border-radius:10px;
+  --chat-border-opacity:.8;
+  --chat-border-color:145,70,255;
+}
 
-let currentMainChannel = null;
-let currentSideChannels = ["", "", ""];
+*{
+ box-sizing:border-box;
+}
 
-function safePlay(player, muted=false) {
-  if (!player) return;
-
-  player.setMuted(muted);
-
-  let tries = 0;
-
-  const timer = setInterval(() => {
-    try {
-      player.play();
-      player.setMuted(muted);
-    } catch(e) {}
-
-    tries++;
-
-    if (tries >= 15) {
-      clearInterval(timer);
-    }
-  }, 500);
+html,body{
+ margin:0;
+ padding:0;
+ width:100%;
+ height:100%;
+ background:transparent;
+ color:#efeff1;
+ font-family:
+ -apple-system,
+ BlinkMacSystemFont,
+ "Segoe UI",
+ Roboto,
+ sans-serif;
+ overflow:hidden;
 }
 
 
-function enableAudio() {
-  userInteracted = true;
+.stage{
+ position:relative;
+ width:100vw;
+ height:100vh;
+}
 
-  document
-    .getElementById("interaction-overlay")
-    .classList.add("hidden");
 
-  if (mainPlayer) {
-    mainPlayer.setMuted(false);
-    safePlay(mainPlayer,false);
+.pov-grid{
+ position:absolute;
+ top:0;
+ left:0;
+ right:0;
+ bottom:18%;
+ display:grid;
+ grid-template-columns:1fr 300px;
+ gap:6px;
+ padding:6px;
+}
+
+
+.main-pov-wrap,
+.side-tile{
+
+ position:relative;
+ background:rgba(0,0,0,.4);
+ border-radius:6px;
+ overflow:hidden;
+
+}
+
+
+.player-container{
+
+ width:100%;
+ height:100%;
+
+}
+
+
+.player-container iframe{
+
+ width:100%!important;
+ height:100%!important;
+ border:0;
+
+}
+
+
+
+.pov-label{
+
+ position:absolute;
+ left:8px;
+ bottom:8px;
+
+ background:rgba(0,0,0,.55);
+
+ padding:3px 8px;
+
+ border-radius:4px;
+
+ font-size:13px;
+
+ display:flex;
+ gap:6px;
+
+ align-items:center;
+
+ z-index:5;
+
+}
+
+
+.side-label{
+
+ font-size:11px;
+ left:6px;
+ bottom:6px;
+
+}
+
+
+
+.live-dot{
+
+ width:8px;
+ height:8px;
+
+ border-radius:50%;
+
+ background:#eb0400;
+
+ display:inline-block;
+
+}
+
+
+
+.side-col{
+
+ display:flex;
+ flex-direction:column;
+
+ gap:6px;
+
+}
+
+
+
+.empty-tile{
+
+ height:100%;
+
+ display:flex;
+
+ justify-content:center;
+ align-items:center;
+
+ color:rgba(255,255,255,.3);
+
+ font-size:12px;
+
+}
+
+
+
+.chat-placeholder{
+
+ position:absolute;
+
+ box-sizing:border-box;
+
+ border-style:solid;
+
+ border-width:var(--chat-border-width);
+
+ border-radius:var(--chat-border-radius);
+
+ border-color:
+ rgba(
+ var(--chat-border-color),
+ var(--chat-border-opacity)
+ );
+
+ background:transparent;
+
+ pointer-events:none;
+
+ z-index:10;
+
+}
+
+
+
+
+.interaction-overlay{
+
+ position:absolute;
+
+ inset:0;
+
+ background:rgba(0,0,0,.85);
+
+ display:flex;
+
+ justify-content:center;
+
+ align-items:center;
+
+ z-index:9999;
+
+ cursor:pointer;
+
+ transition:.3s;
+
+}
+
+
+
+.interaction-overlay.hidden{
+
+ opacity:0;
+
+ pointer-events:none;
+
+}
+
+
+
+.play-btn{
+
+ background:#9146ff;
+
+ color:white;
+
+ border:0;
+
+ padding:12px 24px;
+
+ font-size:16px;
+
+ font-weight:bold;
+
+ border-radius:4px;
+
+ cursor:pointer;
+
+}
+
+
+
+</style>
+
+
+<script src="https://player.twitch.tv/js/embed/v1.js"></script>
+
+</head>
+
+
+<body>
+
+
+<div class="interaction-overlay" 
+id="interaction-overlay"
+onclick="enableAudio()">
+
+<button class="play-btn">
+Click to Start Audio & Autoplay
+</button>
+
+</div>
+
+
+
+<div class="stage">
+
+
+<div class="pov-grid">
+
+
+<div class="main-pov-wrap">
+
+<div id="main-player"
+class="player-container">
+
+<div class="empty-tile">
+No main stream live
+</div>
+
+</div>
+
+
+<div id="main-label"
+class="pov-label"
+style="display:none">
+
+</div>
+
+
+</div>
+
+
+
+<div class="side-col">
+
+
+<div class="side-tile">
+
+<div id="side-player-0"
+class="player-container">
+
+<div class="empty-tile">
+POV #2
+</div>
+
+</div>
+
+
+<div id="side-label-0"
+class="pov-label side-label"
+style="display:none">
+
+</div>
+
+</div>
+
+
+
+<div class="side-tile">
+
+<div id="side-player-1"
+class="player-container">
+
+<div class="empty-tile">
+POV #3
+</div>
+
+</div>
+
+
+<div id="side-label-1"
+class="pov-label side-label"
+style="display:none">
+
+</div>
+
+</div>
+
+
+
+<div class="side-tile">
+
+<div id="side-player-2"
+class="player-container">
+
+<div class="empty-tile">
+POV #4
+</div>
+
+</div>
+
+
+<div id="side-label-2"
+class="pov-label side-label"
+style="display:none">
+
+</div>
+
+</div>
+
+
+</div>
+
+</div>
+
+
+
+<div id="chat-placeholder"
+class="chat-placeholder">
+</div>
+
+
+</div>
+<script>
+
+const params = new URLSearchParams(location.search);
+
+
+function num(name, fallback){
+ const v=parseFloat(params.get(name));
+ return Number.isFinite(v)?v:fallback;
+}
+
+
+// Chat border settings
+
+const root=document.documentElement.style;
+
+root.setProperty(
+ "--chat-border-width",
+ `${num("chatBorderWidth",3)}px`
+);
+
+root.setProperty(
+ "--chat-border-radius",
+ `${num("chatBorderRadius",10)}px`
+);
+
+root.setProperty(
+ "--chat-border-opacity",
+ num("chatBorderOpacity",0.8)
+);
+
+root.setProperty(
+ "--chat-border-color",
+ params.get("chatColor") || "145,70,255"
+);
+
+
+const chat=document.getElementById(
+ "chat-placeholder"
+);
+
+
+let chatTop=num("chatTop",82);
+
+chat.style.top=`${chatTop}%`;
+chat.style.left=`${num("chatLeft",0)}%`;
+chat.style.width=`${num("chatWidth",100)}%`;
+chat.style.height=`${num("chatHeight",18)}%`;
+
+
+
+// ===============================
+// Twitch Player System
+// ===============================
+
+
+const PARENT_DOMAIN =
+"streameruni.onrender.com";
+
+
+let userInteracted=false;
+
+
+let mainPlayer=null;
+
+let sidePlayers=[
+ null,
+ null,
+ null
+];
+
+
+let currentMainChannel="";
+
+
+let currentSideChannels=[
+ "",
+ "",
+ ""
+];
+
+
+
+
+// Reliable autoplay retry
+
+function forcePlay(player, muted){
+
+ if(!player)return;
+
+
+ player.setMuted(muted);
+
+
+ let count=0;
+
+
+ let timer=setInterval(()=>{
+
+   try{
+
+     player.play();
+
+     player.setMuted(muted);
+
+   }
+   catch(e){}
+
+
+
+   count++;
+
+
+   if(count>=20){
+
+    clearInterval(timer);
+
+   }
+
+
+ },500);
+
+
+}
+
+
+
+
+function enableAudio(){
+
+ userInteracted=true;
+
+
+ document
+ .getElementById("interaction-overlay")
+ .classList.add("hidden");
+
+
+
+ if(mainPlayer){
+
+   mainPlayer.setMuted(false);
+
+   forcePlay(
+    mainPlayer,
+    false
+   );
+
+ }
+
+
+
+ sidePlayers.forEach(p=>{
+
+  if(p){
+
+   forcePlay(
+    p,
+    true
+   );
+
   }
 
-  sidePlayers.forEach(p=>{
-    if(p){
-      safePlay(p,true);
-    }
-  });
+ });
+
+
 }
 
 
 
-function createPlayer(id,channel,muted){
-
-  document.getElementById(id).innerHTML="";
-
-  let player = new Twitch.Player(id,{
-    channel:channel,
-    parent:[PARENT_DOMAIN],
-    width:"100%",
-    height:"100%",
-    autoplay:true,
-    muted:muted,
-    controls:false
-  });
 
 
-  player.addEventListener(
-    Twitch.Player.READY,
-    ()=>{
-      player.setQuality("chunked");
-      safePlay(player,muted);
-    }
-  );
+function createTwitchPlayer(
+ container,
+ channel,
+ muted
+){
 
 
-  player.addEventListener(
-    Twitch.Player.PLAY,
-    ()=>{
-      player.setMuted(muted);
-    }
-  );
+ document.getElementById(container)
+ .innerHTML="";
 
 
-  return player;
+
+ let player=new Twitch.Player(
+ container,
+ {
+
+ channel:channel,
+
+ parent:[
+   PARENT_DOMAIN
+ ],
+
+ width:"100%",
+
+ height:"100%",
+
+ autoplay:true,
+
+ muted:muted,
+
+ controls:false
+
+ });
+
+
+ player.addEventListener(
+ Twitch.Player.READY,
+ ()=>{
+
+   player.setQuality(
+    "chunked"
+   );
+
+
+   forcePlay(
+    player,
+    muted
+   );
+
+ });
+
+
+ player.addEventListener(
+ Twitch.Player.PLAY,
+ ()=>{
+
+   player.setMuted(
+    muted
+   );
+
+ });
+
+
+ return player;
+
 }
 
 
 
-function swapChannel(player,newChannel,muted){
 
-  if(!player) return;
+function swapStream(
+ player,
+ channel,
+ muted
+){
 
-  player.setChannel(newChannel);
+ if(!player)return;
 
-  setTimeout(()=>{
-    safePlay(player,muted);
-  },1000);
 
-  setTimeout(()=>{
-    safePlay(player,muted);
-  },3000);
+ player.setChannel(
+  channel
+ );
 
-  setTimeout(()=>{
-    safePlay(player,muted);
-  },6000);
+
+ // retry after Twitch loads
+
+ setTimeout(()=>{
+  forcePlay(player,muted);
+ },1000);
+
+
+ setTimeout(()=>{
+  forcePlay(player,muted);
+ },3000);
+
+
+ setTimeout(()=>{
+  forcePlay(player,muted);
+ },6000);
+
+
 }
+
+
+
 
 
 
 function renderMain(stream){
 
- const label=document.getElementById("main-label");
+
+ const label=
+ document.getElementById(
+ "main-label"
+ );
+
+
 
  if(!stream){
-   label.style.display="none";
-   return;
+
+  label.style.display="none";
+
+  return;
+
  }
+
+
 
 
  if(!mainPlayer){
 
-   mainPlayer=createPlayer(
-     "main-player",
-     stream.channel,
-     true
-   );
 
-   currentMainChannel=stream.channel;
+  mainPlayer=createTwitchPlayer(
+   "main-player",
+   stream.channel,
+   true
+  );
+
+
+  currentMainChannel=
+  stream.channel;
+
 
  }
 
- else if(currentMainChannel!==stream.channel){
+ else if(
+ currentMainChannel !== stream.channel
+ ){
 
-   currentMainChannel=stream.channel;
 
-   swapChannel(
-     mainPlayer,
-     stream.channel,
-     !userInteracted
-   );
+  currentMainChannel=
+  stream.channel;
+
+
+  swapStream(
+   mainPlayer,
+   stream.channel,
+   !userInteracted
+  );
+
+
  }
+
 
 
  label.style.display="flex";
+
+
  label.innerHTML=
+
  `<span class="live-dot"></span>
- ${stream.channel} · ${stream.viewers.toLocaleString()} viewers`;
+ ${stream.channel}
+ ·
+ ${stream.viewers.toLocaleString()}
+ viewers`;
+
+
 
 }
+
+
+
 
 
 
 
 function renderSidebar(streams){
 
- for(let i=0;i<3;i++){
-
-   let stream=streams[i];
-
-   let label=document.getElementById(
-     `side-label-${i}`
-   );
 
 
-   if(!stream){
-
-     label.style.display="none";
-     continue;
-   }
-
-
-   if(!sidePlayers[i]){
-
-     sidePlayers[i]=createPlayer(
-       `side-player-${i}`,
-       stream.channel,
-       true
-     );
-
-     currentSideChannels[i]=stream.channel;
-
-   }
-
-   else if(
-     currentSideChannels[i]!==stream.channel
-   ){
-
-     currentSideChannels[i]=stream.channel;
-
-     swapChannel(
-       sidePlayers[i],
-       stream.channel,
-       true
-     );
-
-   }
+ for(
+ let i=0;
+ i<3;
+ i++
+ ){
 
 
-   label.style.display="flex";
-   label.textContent=
-   `${stream.channel} · ${stream.viewers.toLocaleString()}`;
+ let stream=streams[i];
+
+
+ let label=document.getElementById(
+  `side-label-${i}`
+ );
+
+
+
+ if(!stream){
+
+   label.style.display="none";
+
+   continue;
 
  }
 
+
+
+ if(!sidePlayers[i]){
+
+
+  sidePlayers[i]=createTwitchPlayer(
+   `side-player-${i}`,
+   stream.channel,
+   true
+  );
+
+
+  currentSideChannels[i]=
+  stream.channel;
+
+
+ }
+
+ else if(
+ currentSideChannels[i] !== stream.channel
+ ){
+
+
+  currentSideChannels[i]=
+  stream.channel;
+
+
+  swapStream(
+   sidePlayers[i],
+   stream.channel,
+   true
+  );
+
+
+ }
+
+
+
+
+ label.style.display="flex";
+
+
+ label.textContent=
+
+ `${stream.channel}
+ ·
+ ${stream.viewers.toLocaleString()}`;
+
+ }
+
+
 }
+
+
+
+
+
 
 
 
 async function refresh(){
 
+
  try{
 
- const res=await fetch("/api/status");
- const data=await res.json();
 
- const streams=data.streams || [];
-
- renderMain(streams[0] || null);
-
- renderSidebar(streams.slice(1,4));
+ const response=
+ await fetch("/api/status");
 
 
- }catch(e){
+ const data=
+ await response.json();
+
+
+
+ const streams=
+ data.streams || [];
+
+
+
+ renderMain(
+  streams[0] || null
+ );
+
+
+ renderSidebar(
+  streams.slice(1,4)
+ );
+
+
+
+ }
+ catch(err){
 
  console.error(
- "stream refresh failed",
- e
+ "stream update failed",
+ err
  );
 
  }
 
+
 }
 
 
+
+
 refresh();
+
 
 setInterval(
  refresh,
  60000
 );
 
+
+
 </script>
+
+</body>
+</html>
