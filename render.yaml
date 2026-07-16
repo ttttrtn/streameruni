@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: streamer-university-director
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: TWITCH_CLIENT_ID
+        sync: false
+      - key: TWITCH_ACCESS_TOKEN
+        sync: false

@@ -1,0 +1,6 @@
+# Fallback channel list, one channel login per line.
+# Used only if Twitch category search/streams lookup fails.
+Kai_Cenat
+StableRonaldo
+Ludwig
+Fanum
