@@ -6,66 +6,66 @@
 <style>
   :root {
     color-scheme: dark;
+    /* Chat placeholder defaults — all overridable via URL query params, see script below. */
+    --chat-border-width: 3px;
+    --chat-border-radius: 10px;
+    --chat-border-opacity: 0.8;
+    --chat-border-color: 145, 70, 255; /* r,g,b — combined with opacity above */
   }
   * { box-sizing: border-box; }
-  body {
+  html, body {
     margin: 0;
-    background: #0e0e10;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    /* Transparent so this works cleanly as an OBS Browser Source over other sources/scenes. */
+    background: transparent;
     color: #efeff1;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  }
-  header {
-    padding: 12px 20px;
-    border-bottom: 1px solid #26262c;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  header h1 {
-    font-size: 16px;
-    margin: 0;
-    font-weight: 600;
-    color: #a970ff;
-  }
-  header .status {
-    font-size: 12px;
-    color: #adadb8;
-  }
-  .layout {
-    display: grid;
-    grid-template-columns: 1fr 300px;
-    gap: 8px;
-    padding: 8px;
-    height: calc(100vh - 49px);
-  }
-  .main-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    min-width: 0;
-  }
-  .main-player-wrap {
-    position: relative;
-    flex: 1;
-    background: #000;
-    border-radius: 6px;
     overflow: hidden;
   }
-  .main-player-wrap iframe {
+
+  .stage {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+  }
+
+  /* ---------- POV grid (Main + sidebar) ---------- */
+  .pov-grid {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0; /* resized dynamically to leave room for chat placeholder */
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 6px;
+    padding: 6px;
+  }
+  .main-pov-wrap {
+    position: relative;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 6px;
+    overflow: hidden;
+    min-width: 0;
+  }
+  .main-pov-wrap iframe {
     width: 100%;
     height: 100%;
     border: 0;
   }
-  .main-label {
+  .main-pov-label {
+    position: absolute;
+    left: 8px;
+    bottom: 8px;
     font-size: 13px;
-    color: #adadb8;
+    background: rgba(0, 0, 0, 0.55);
+    padding: 3px 8px;
+    border-radius: 4px;
     display: flex;
-    gap: 8px;
+    gap: 6px;
     align-items: center;
-  }
-  .main-label .name {
-    color: #efeff1;
-    font-weight: 600;
   }
   .live-dot {
     width: 8px;
@@ -74,150 +74,189 @@
     background: #eb0400;
     display: inline-block;
   }
-  .sidebar {
+  .side-col {
     display: flex;
     flex-direction: column;
     gap: 6px;
-    overflow-y: auto;
+    min-height: 0;
   }
   .side-tile {
-    background: #18181b;
+    position: relative;
+    flex: 1;
+    background: rgba(0, 0, 0, 0.4);
     border-radius: 6px;
     overflow: hidden;
-    border: 1px solid #26262c;
+    min-height: 0;
   }
-  .side-player-wrap {
-    position: relative;
-    aspect-ratio: 16 / 9;
-    background: #000;
-  }
-  .side-player-wrap iframe {
+  .side-tile iframe {
     width: 100%;
     height: 100%;
     border: 0;
   }
-  .side-info {
-    padding: 6px 8px;
-    font-size: 12px;
-    display: flex;
-    justify-content: space-between;
-    color: #adadb8;
+  .side-label {
+    position: absolute;
+    left: 6px;
+    bottom: 6px;
+    font-size: 11px;
+    background: rgba(0, 0, 0, 0.55);
+    padding: 2px 6px;
+    border-radius: 4px;
   }
-  .side-info .name { color: #efeff1; font-weight: 600; }
-  .empty {
+  .empty-tile {
     display: flex;
     align-items: center;
     justify-content: center;
     height: 100%;
-    color: #555;
-    font-size: 14px;
+    color: rgba(255, 255, 255, 0.3);
+    font-size: 12px;
+  }
+
+  /* ---------- Chat placeholder frame ---------- */
+  /* Visual container ONLY — no chat is loaded, rendered, or fetched here.
+     Position/size/border are all controlled by CSS variables set from
+     URL query params (see script at bottom), so this can be tuned per
+     OBS scene without editing the file. */
+  .chat-placeholder {
+    position: absolute;
+    box-sizing: border-box;
+    border-style: solid;
+    border-width: var(--chat-border-width);
+    border-radius: var(--chat-border-radius);
+    border-color: rgba(var(--chat-border-color), var(--chat-border-opacity));
+    background: transparent;
+    pointer-events: none; /* never intercepts clicks meant for your real chat source */
   }
 </style>
 </head>
 <body>
-  <header>
-    <h1>Streamer University — Live Director</h1>
-    <div class="status" id="status-line">Loading…</div>
-  </header>
-  <div class="layout">
-    <div class="main-panel">
-      <div class="main-player-wrap" id="main-player-wrap">
-        <div class="empty">No main stream live</div>
+  <div class="stage">
+    <div class="pov-grid" id="pov-grid">
+      <div class="main-pov-wrap" id="main-pov-wrap">
+        <div class="empty-tile">No main stream live</div>
       </div>
-      <div class="main-label" id="main-label"></div>
+      <div class="side-col" id="side-col">
+        <div class="side-tile"><div class="empty-tile">POV #2</div></div>
+        <div class="side-tile"><div class="empty-tile">POV #3</div></div>
+        <div class="side-tile"><div class="empty-tile">POV #4</div></div>
+      </div>
     </div>
-    <div class="sidebar" id="sidebar"></div>
+
+    <!-- Empty visual placeholder only. Your existing chat overlay source
+         goes in OBS as its own Browser Source, positioned on top of this
+         frame. This div never loads chat content or calls any chat API. -->
+    <div class="chat-placeholder" id="chat-placeholder"></div>
   </div>
 
 <script>
-  // Twitch embed requires the exact hosting parent domain (no protocol).
+  // ============================================================
+  // Chat placeholder configuration via URL query params.
+  // Example:
+  // index.html?chatBorderWidth=4&chatBorderRadius=16&chatBorderOpacity=0.6
+  //           &chatColor=145,70,255&chatTop=82&chatLeft=0&chatWidth=100&chatHeight=18
+  // All values are percentages of viewport for position/size, except
+  // border width (px) and radius (px). Defaults match the diagram:
+  // a bar spanning full width along the bottom.
+  // ============================================================
+  const params = new URLSearchParams(location.search);
+
+  function num(name, fallback) {
+    const v = parseFloat(params.get(name));
+    return Number.isFinite(v) ? v : fallback;
+  }
+
+  const chatBorderWidth = num("chatBorderWidth", 3);      // px
+  const chatBorderRadius = num("chatBorderRadius", 10);   // px
+  const chatBorderOpacity = num("chatBorderOpacity", 0.8); // 0-1
+  const chatColor = params.get("chatColor") || "145, 70, 255"; // "r,g,b"
+
+  // Position/size as percentages of the viewport, so it scales with
+  // whatever resolution you set the OBS Browser Source to.
+  const chatTop = num("chatTop", 82);      // %
+  const chatLeft = num("chatLeft", 0);     // %
+  const chatWidth = num("chatWidth", 100); // %
+  const chatHeight = num("chatHeight", 18); // %
+
+  const root = document.documentElement.style;
+  root.setProperty("--chat-border-width", `${chatBorderWidth}px`);
+  root.setProperty("--chat-border-radius", `${chatBorderRadius}px`);
+  root.setProperty("--chat-border-opacity", chatBorderOpacity);
+  root.setProperty("--chat-border-color", chatColor);
+
+  const chatEl = document.getElementById("chat-placeholder");
+  chatEl.style.top = `${chatTop}%`;
+  chatEl.style.left = `${chatLeft}%`;
+  chatEl.style.width = `${chatWidth}%`;
+  chatEl.style.height = `${chatHeight}%`;
+
+  // Shrink the POV grid so it never overlaps the chat placeholder area,
+  // matching the diagram (POVs stacked above the chat bar).
+  document.getElementById("pov-grid").style.bottom = `${100 - chatTop}%`;
+
+  // ============================================================
+  // POV embeds (Main + sidebar) — unrelated to chat, unchanged logic.
+  // ============================================================
   const PARENT_DOMAIN = "streameruni.onrender.com";
   const POLL_MS = 60 * 1000;
   const SIDEBAR_SIZE = 3;
 
   let currentMainChannel = null;
-  const sidebarIframes = new Map(); // channel -> iframe element
 
   function twitchEmbedSrc(channel) {
     return `https://player.twitch.tv/?channel=${encodeURIComponent(channel)}&parent=${PARENT_DOMAIN}&muted=true`;
   }
 
   function renderMain(stream) {
-    const wrap = document.getElementById("main-player-wrap");
-    const label = document.getElementById("main-label");
-
+    const wrap = document.getElementById("main-pov-wrap");
     if (!stream) {
-      wrap.innerHTML = '<div class="empty">No main stream live</div>';
-      label.innerHTML = "";
+      wrap.innerHTML = '<div class="empty-tile">No main stream live</div>';
       currentMainChannel = null;
       return;
     }
-
     if (stream.channel !== currentMainChannel) {
-      wrap.innerHTML = "";
-      const iframe = document.createElement("iframe");
-      iframe.src = twitchEmbedSrc(stream.channel);
-      iframe.allowFullscreen = true;
-      wrap.appendChild(iframe);
+      wrap.innerHTML = `<iframe src="${twitchEmbedSrc(stream.channel)}" allowfullscreen></iframe>`;
       currentMainChannel = stream.channel;
     }
-
-    label.innerHTML = `<span class="live-dot"></span><span class="name">${stream.channel}</span> ${stream.viewers.toLocaleString()} viewers`;
+    let label = wrap.querySelector(".main-pov-label");
+    if (!label) {
+      label = document.createElement("div");
+      label.className = "main-pov-label";
+      wrap.appendChild(label);
+    }
+    label.innerHTML = `<span class="live-dot"></span>${stream.channel} · ${stream.viewers.toLocaleString()} viewers`;
   }
 
   function renderSidebar(streams) {
-    const container = document.getElementById("sidebar");
-    const wantedChannels = new Set(streams.map((s) => s.channel));
-
-    // Remove tiles for channels no longer in the sidebar
-    for (const [channel, el] of sidebarIframes.entries()) {
-      if (!wantedChannels.has(channel)) {
-        el.remove();
-        sidebarIframes.delete(channel);
+    const col = document.getElementById("side-col");
+    const tiles = col.querySelectorAll(".side-tile");
+    tiles.forEach((tile, i) => {
+      const stream = streams[i];
+      if (!stream) {
+        tile.innerHTML = `<div class="empty-tile">POV #${i + 2}</div>`;
+        return;
       }
-    }
-
-    streams.forEach((stream) => {
-      let tile = sidebarIframes.get(stream.channel);
-      if (!tile) {
-        tile = document.createElement("div");
-        tile.className = "side-tile";
-        tile.innerHTML = `
-          <div class="side-player-wrap">
-            <iframe src="${twitchEmbedSrc(stream.channel)}" allowfullscreen></iframe>
-          </div>
-          <div class="side-info">
-            <span class="name">${stream.channel}</span>
-            <span class="viewers"></span>
-          </div>
-        `;
-        container.appendChild(tile);
-        sidebarIframes.set(stream.channel, tile);
+      const existingSrc = tile.querySelector("iframe")?.src || "";
+      if (!existingSrc.includes(encodeURIComponent(stream.channel))) {
+        tile.innerHTML = `<iframe src="${twitchEmbedSrc(stream.channel)}" allowfullscreen></iframe>`;
       }
-      tile.querySelector(".viewers").textContent = `${stream.viewers.toLocaleString()} viewers`;
-    });
-
-    // Keep DOM order matching rank order
-    streams.forEach((stream) => {
-      const tile = sidebarIframes.get(stream.channel);
-      container.appendChild(tile);
+      let label = tile.querySelector(".side-label");
+      if (!label) {
+        label = document.createElement("div");
+        label.className = "side-label";
+        tile.appendChild(label);
+      }
+      label.textContent = `${stream.channel} · ${stream.viewers.toLocaleString()}`;
     });
   }
 
   async function refresh() {
-    const statusLine = document.getElementById("status-line");
     try {
       const res = await fetch("/api/status");
       const data = await res.json();
       const streams = data.streams || [];
-
       renderMain(streams[0] || null);
       renderSidebar(streams.slice(1, 1 + SIDEBAR_SIZE));
-
-      statusLine.textContent = `${streams.length} live • updated ${new Date().toLocaleTimeString()}`;
     } catch (err) {
-      statusLine.textContent = "Failed to load status";
-      console.error(err);
+      console.error("status fetch failed", err);
     }
   }
 
