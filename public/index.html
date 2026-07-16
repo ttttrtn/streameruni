@@ -1,4 +1,4 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
@@ -40,22 +40,29 @@
     grid-template-columns: 1fr 300px;
     gap: 6px;
     padding: 6px;
-    z-index: 1; /* Keeps video below chat */
+    z-index: 1; 
   }
-  .main-pov-wrap {
+  .main-pov-wrap, .side-tile {
     position: relative;
     background: rgba(0, 0, 0, 0.4);
     border-radius: 6px;
     overflow: hidden;
     min-width: 0;
   }
-  .main-pov-wrap iframe,
-  .side-tile iframe {
+  
+  /* Container for the JS Player */
+  .player-container {
     width: 100%;
     height: 100%;
+  }
+  /* Force Twitch's generated iframe to fit */
+  .player-container iframe {
+    width: 100% !important;
+    height: 100% !important;
     border: 0;
   }
-  .main-pov-label {
+
+  .pov-label {
     position: absolute;
     left: 8px;
     bottom: 8px;
@@ -67,6 +74,12 @@
     gap: 6px;
     align-items: center;
     pointer-events: none;
+    z-index: 5;
+  }
+  .side-label {
+    font-size: 11px;
+    left: 6px;
+    bottom: 6px;
   }
   .live-dot {
     width: 8px;
@@ -80,24 +93,6 @@
     flex-direction: column;
     gap: 6px;
     min-height: 0;
-  }
-  .side-tile {
-    position: relative;
-    flex: 1;
-    background: rgba(0, 0, 0, 0.4);
-    border-radius: 6px;
-    overflow: hidden;
-    min-height: 0;
-  }
-  .side-label {
-    position: absolute;
-    left: 6px;
-    bottom: 6px;
-    font-size: 11px;
-    background: rgba(0, 0, 0, 0.55);
-    padding: 2px 6px;
-    border-radius: 4px;
-    pointer-events: none;
   }
   .empty-tile {
     display: flex;
@@ -120,18 +115,68 @@
     pointer-events: none; 
     z-index: 10;
   }
+
+  /* ---------- Interaction Overlay ---------- */
+  .interaction-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+    cursor: pointer;
+    transition: opacity 0.3s ease;
+  }
+  .interaction-overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .play-btn {
+    background: #9146ff;
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    font-size: 16px;
+    font-weight: bold;
+    border-radius: 4px;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  }
 </style>
+<!-- Twitch JS API -->
+<script src="https://player.twitch.tv/js/embed/v1.js"></script>
 </head>
 <body>
+
+  <!-- Click overlay to satisfy browser audio requirements -->
+  <div class="interaction-overlay" id="interaction-overlay" onclick="enableAudio()">
+    <button class="play-btn">Click to Start Audio & Autoplay</button>
+  </div>
+
   <div class="stage">
     <div class="pov-grid" id="pov-grid">
       <div class="main-pov-wrap" id="main-pov-wrap">
-        <div class="empty-tile">No main stream live</div>
+        <div id="main-player" class="player-container"><div class="empty-tile">No main stream live</div></div>
+        <div id="main-label" class="pov-label" style="display: none;"></div>
       </div>
       <div class="side-col" id="side-col">
-        <div class="side-tile"><div class="empty-tile">POV #2</div></div>
-        <div class="side-tile"><div class="empty-tile">POV #3</div></div>
-        <div class="side-tile"><div class="empty-tile">POV #4</div></div>
+        <div class="side-tile">
+          <div id="side-player-0" class="player-container"><div class="empty-tile">POV #2</div></div>
+          <div id="side-label-0" class="pov-label side-label" style="display: none;"></div>
+        </div>
+        <div class="side-tile">
+          <div id="side-player-1" class="player-container"><div class="empty-tile">POV #3</div></div>
+          <div id="side-label-1" class="pov-label side-label" style="display: none;"></div>
+        </div>
+        <div class="side-tile">
+          <div id="side-player-2" class="player-container"><div class="empty-tile">POV #4</div></div>
+          <div id="side-label-2" class="pov-label side-label" style="display: none;"></div>
+        </div>
       </div>
     </div>
     <div class="chat-placeholder" id="chat-placeholder"></div>
@@ -139,15 +184,13 @@
 
 <script>
   // ============================================================
-  // Chat placeholder configuration via URL query params
+  // Chat placeholder styling (kept from your original)
   // ============================================================
   const params = new URLSearchParams(location.search);
-
   function num(name, fallback) {
     const v = parseFloat(params.get(name));
     return Number.isFinite(v) ? v : fallback;
   }
-
   const chatTop = num("chatTop", 82);
   const root = document.documentElement.style;
   root.setProperty("--chat-border-width", `${num("chatBorderWidth", 3)}px`);
@@ -160,66 +203,133 @@
   chatEl.style.left = `${num("chatLeft", 0)}%`;
   chatEl.style.width = `${num("chatWidth", 100)}%`;
   chatEl.style.height = `${num("chatHeight", 18)}%`;
-
   document.getElementById("pov-grid").style.bottom = `${100 - chatTop}%`;
 
   // ============================================================
-  // POV embeds (Main + sidebar)
+  // Twitch Player Logic (Dynamic Channel Swapping)
   // ============================================================
   const PARENT_DOMAIN = "streameruni.onrender.com";
-  const POLL_MS = 60 * 1000;
-  const SIDEBAR_SIZE = 3;
-
+  
+  let userInteracted = false;
+  let mainPlayer = null;
+  let sidePlayers = [null, null, null];
+  
   let currentMainChannel = null;
+  let currentSideChannels = [null, null, null];
 
-  function twitchEmbedSrc(channel, muted) {
-    // Autoplay is forced to true. Muted is dynamic based on main vs sidebar.
-    return `https://player.twitch.tv/?channel=${encodeURIComponent(channel)}&parent=${PARENT_DOMAIN}&autoplay=true&muted=${muted}`;
+  // Fired when the overlay is clicked
+  function enableAudio() {
+    userInteracted = true;
+    document.getElementById("interaction-overlay").classList.add("hidden");
+    
+    // Unmute main stream and force play
+    if (mainPlayer) {
+      mainPlayer.setMuted(false);
+      mainPlayer.play();
+    }
+    // Force play on sidebars (they stay muted)
+    sidePlayers.forEach(p => {
+      if (p) {
+        p.setMuted(true);
+        p.play();
+      }
+    });
   }
 
   function renderMain(stream) {
-    const wrap = document.getElementById("main-pov-wrap");
+    const label = document.getElementById("main-label");
+    
     if (!stream) {
-      wrap.innerHTML = '<div class="empty-tile">No main stream live</div>';
-      currentMainChannel = null;
+      if (mainPlayer) mainPlayer.pause();
+      label.style.display = "none";
       return;
     }
-    if (stream.channel !== currentMainChannel) {
-      // Main stream: muted=false. allow="autoplay" is required.
-      wrap.innerHTML = `<iframe src="${twitchEmbedSrc(stream.channel, false)}" allow="autoplay; fullscreen" allowfullscreen></iframe>`;
+
+    // If player doesn't exist yet, build it
+    if (!mainPlayer) {
+      document.getElementById("main-player").innerHTML = ""; // Clear empty tile
+      mainPlayer = new Twitch.Player("main-player", {
+        channel: stream.channel,
+        parent: [PARENT_DOMAIN],
+        width: "100%",
+        height: "100%",
+        muted: true, // Start muted so browser allows initialization
+        autoplay: true,
+        controls: false
+      });
+
+      mainPlayer.addEventListener(Twitch.Player.READY, () => {
+        mainPlayer.setQuality("chunked");
+        if (userInteracted) {
+          mainPlayer.setMuted(false);
+          mainPlayer.play();
+        }
+      });
       currentMainChannel = stream.channel;
+    } 
+    // If player exists but channel changed, SWAP instead of rebuilding
+    else if (stream.channel !== currentMainChannel) {
+      mainPlayer.setChannel(stream.channel);
+      currentMainChannel = stream.channel;
+      
+      // Ensure audio stays unmuted if user already clicked
+      if (userInteracted) {
+        setTimeout(() => {
+          mainPlayer.setMuted(false);
+          mainPlayer.play();
+        }, 500); // slight delay lets the new stream buffer first
+      }
     }
-    let label = wrap.querySelector(".main-pov-label");
-    if (!label) {
-      label = document.createElement("div");
-      label.className = "main-pov-label";
-      wrap.appendChild(label);
-    }
+
+    // Update label text
+    label.style.display = "flex";
     label.innerHTML = `<span class="live-dot"></span>${stream.channel} · ${stream.viewers.toLocaleString()} viewers`;
   }
 
   function renderSidebar(streams) {
-    const col = document.getElementById("side-col");
-    const tiles = col.querySelectorAll(".side-tile");
-    tiles.forEach((tile, i) => {
+    for (let i = 0; i < 3; i++) {
       const stream = streams[i];
+      const containerId = `side-player-${i}`;
+      const labelId = `side-label-${i}`;
+      const label = document.getElementById(labelId);
+
       if (!stream) {
-        tile.innerHTML = `<div class="empty-tile">POV #${i + 2}</div>`;
-        return;
+        if (sidePlayers[i]) sidePlayers[i].pause();
+        label.style.display = "none";
+        continue;
       }
-      const existingSrc = tile.querySelector("iframe")?.src || "";
-      if (!existingSrc.includes(encodeURIComponent(stream.channel))) {
-        // Sidebar streams: muted=true
-        tile.innerHTML = `<iframe src="${twitchEmbedSrc(stream.channel, true)}" allow="autoplay; fullscreen" allowfullscreen></iframe>`;
+
+      // If player doesn't exist, build it
+      if (!sidePlayers[i]) {
+        document.getElementById(containerId).innerHTML = "";
+        sidePlayers[i] = new Twitch.Player(containerId, {
+          channel: stream.channel,
+          parent: [PARENT_DOMAIN],
+          width: "100%",
+          height: "100%",
+          muted: true, // Always muted
+          autoplay: true,
+          controls: false
+        });
+        
+        sidePlayers[i].addEventListener(Twitch.Player.READY, () => {
+          sidePlayers[i].setQuality("720p30");
+        });
+        currentSideChannels[i] = stream.channel;
       }
-      let label = tile.querySelector(".side-label");
-      if (!label) {
-        label = document.createElement("div");
-        label.className = "side-label";
-        tile.appendChild(label);
+      // If player exists but channel changed, SWAP
+      else if (stream.channel !== currentSideChannels[i]) {
+        sidePlayers[i].setChannel(stream.channel);
+        currentSideChannels[i] = stream.channel;
+        
+        if (userInteracted) {
+          setTimeout(() => sidePlayers[i].play(), 500);
+        }
       }
+
+      label.style.display = "flex";
       label.textContent = `${stream.channel} · ${stream.viewers.toLocaleString()}`;
-    });
+    }
   }
 
   async function refresh() {
@@ -228,14 +338,14 @@
       const data = await res.json();
       const streams = data.streams || [];
       renderMain(streams[0] || null);
-      renderSidebar(streams.slice(1, 1 + SIDEBAR_SIZE));
+      renderSidebar(streams.slice(1, 4));
     } catch (err) {
       console.error("status fetch failed", err);
     }
   }
 
   refresh();
-  setInterval(refresh, POLL_MS);
+  setInterval(refresh, 60 * 1000); // Poll every 60s
 </script>
 </body>
 </html>
