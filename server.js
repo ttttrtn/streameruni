@@ -15,6 +15,8 @@ director.start();
 
 const app = express();
 
+app.use(express.static(require('path').join(__dirname, 'public')));
+
 app.get('/api/status', (req, res) => {
   res.json(director.getStatus());
 });

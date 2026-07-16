@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Streamer University — Live Director</title>
+<style>
+  :root {
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: #0e0e10;
+    color: #efeff1;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    padding: 12px 20px;
+    border-bottom: 1px solid #26262c;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  header h1 {
+    font-size: 16px;
+    margin: 0;
+    font-weight: 600;
+    color: #a970ff;
+  }
+  header .status {
+    font-size: 12px;
+    color: #adadb8;
+  }
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 8px;
+    padding: 8px;
+    height: calc(100vh - 49px);
+  }
+  .main-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+  .main-player-wrap {
+    position: relative;
+    flex: 1;
+    background: #000;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .main-player-wrap iframe {
+    width: 100%;
+    height: 100%;
+    border: 0;
+  }
+  .main-label {
+    font-size: 13px;
+    color: #adadb8;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .main-label .name {
+    color: #efeff1;
+    font-weight: 600;
+  }
+  .live-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #eb0400;
+    display: inline-block;
+  }
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    overflow-y: auto;
+  }
+  .side-tile {
+    background: #18181b;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid #26262c;
+  }
+  .side-player-wrap {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    background: #000;
+  }
+  .side-player-wrap iframe {
+    width: 100%;
+    height: 100%;
+    border: 0;
+  }
+  .side-info {
+    padding: 6px 8px;
+    font-size: 12px;
+    display: flex;
+    justify-content: space-between;
+    color: #adadb8;
+  }
+  .side-info .name { color: #efeff1; font-weight: 600; }
+  .empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #555;
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Streamer University — Live Director</h1>
+    <div class="status" id="status-line">Loading…</div>
+  </header>
+  <div class="layout">
+    <div class="main-panel">
+      <div class="main-player-wrap" id="main-player-wrap">
+        <div class="empty">No main stream live</div>
+      </div>
+      <div class="main-label" id="main-label"></div>
+    </div>
+    <div class="sidebar" id="sidebar"></div>
+  </div>
+
+<script>
+  // Twitch embed requires the exact hosting parent domain (no protocol).
+  const PARENT_DOMAIN = "streameruni.onrender.com";
+  const POLL_MS = 60 * 1000;
+  const SIDEBAR_SIZE = 3;
+
+  let currentMainChannel = null;
+  const sidebarIframes = new Map(); // channel -> iframe element
+
+  function twitchEmbedSrc(channel) {
+    return `https://player.twitch.tv/?channel=${encodeURIComponent(channel)}&parent=${PARENT_DOMAIN}&muted=true`;
+  }
+
+  function renderMain(stream) {
+    const wrap = document.getElementById("main-player-wrap");
+    const label = document.getElementById("main-label");
+
+    if (!stream) {
+      wrap.innerHTML = '<div class="empty">No main stream live</div>';
+      label.innerHTML = "";
+      currentMainChannel = null;
+      return;
+    }
+
+    if (stream.channel !== currentMainChannel) {
+      wrap.innerHTML = "";
+      const iframe = document.createElement("iframe");
+      iframe.src = twitchEmbedSrc(stream.channel);
+      iframe.allowFullscreen = true;
+      wrap.appendChild(iframe);
+      currentMainChannel = stream.channel;
+    }
+
+    label.innerHTML = `<span class="live-dot"></span><span class="name">${stream.channel}</span> ${stream.viewers.toLocaleString()} viewers`;
+  }
+
+  function renderSidebar(streams) {
+    const container = document.getElementById("sidebar");
+    const wantedChannels = new Set(streams.map((s) => s.channel));
+
+    // Remove tiles for channels no longer in the sidebar
+    for (const [channel, el] of sidebarIframes.entries()) {
+      if (!wantedChannels.has(channel)) {
+        el.remove();
+        sidebarIframes.delete(channel);
+      }
+    }
+
+    streams.forEach((stream) => {
+      let tile = sidebarIframes.get(stream.channel);
+      if (!tile) {
+        tile = document.createElement("div");
+        tile.className = "side-tile";
+        tile.innerHTML = `
+          <div class="side-player-wrap">
+            <iframe src="${twitchEmbedSrc(stream.channel)}" allowfullscreen></iframe>
+          </div>
+          <div class="side-info">
+            <span class="name">${stream.channel}</span>
+            <span class="viewers"></span>
+          </div>
+        `;
+        container.appendChild(tile);
+        sidebarIframes.set(stream.channel, tile);
+      }
+      tile.querySelector(".viewers").textContent = `${stream.viewers.toLocaleString()} viewers`;
+    });
+
+    // Keep DOM order matching rank order
+    streams.forEach((stream) => {
+      const tile = sidebarIframes.get(stream.channel);
+      container.appendChild(tile);
+    });
+  }
+
+  async function refresh() {
+    const statusLine = document.getElementById("status-line");
+    try {
+      const res = await fetch("/api/status");
+      const data = await res.json();
+      const streams = data.streams || [];
+
+      renderMain(streams[0] || null);
+      renderSidebar(streams.slice(1, 1 + SIDEBAR_SIZE));
+
+      statusLine.textContent = `${streams.length} live • updated ${new Date().toLocaleTimeString()}`;
+    } catch (err) {
+      statusLine.textContent = "Failed to load status";
+      console.error(err);
+    }
+  }
+
+  refresh();
+  setInterval(refresh, POLL_MS);
+</script>
+</body>
+</html>
