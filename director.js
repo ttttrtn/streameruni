@@ -42,6 +42,7 @@ class Director {
       liveCount: 0,
       main: null, // { user_login, viewer_count, ... }
       sidebar: [], // array of stream objects
+      allStreams: [], // full sorted list of every live stream this tick
       lastSwitch: null,
       lastUpdated: null,
     };
@@ -62,11 +63,11 @@ class Director {
 
   getStatus() {
     return {
-      category: this.categoryName || CATEGORY_NAME,
-      live_streamers: this.state.liveCount,
-      main: this.state.main ? this.state.main.user_login : null,
-      viewers: this.state.main ? this.state.main.viewer_count : 0,
-      last_switch: this.state.lastSwitch,
+      streams: this.state.allStreams.map((s) => ({
+        channel: s.user_login,
+        viewers: s.viewer_count || 0,
+        title: s.title,
+      })),
     };
   }
 
@@ -131,6 +132,7 @@ class Director {
     );
 
     this.state.liveCount = sorted.length;
+    this.state.allStreams = sorted;
     this.state.lastUpdated = new Date().toISOString();
 
     const previousMain = this.state.main;
