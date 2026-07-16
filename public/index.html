@@ -112,10 +112,6 @@
   }
 
   /* ---------- Chat placeholder frame ---------- */
-  /* Visual container ONLY — no chat is loaded, rendered, or fetched here.
-     Position/size/border are all controlled by CSS variables set from
-     URL query params (see script at bottom), so this can be tuned per
-     OBS scene without editing the file. */
   .chat-placeholder {
     position: absolute;
     box-sizing: border-box;
@@ -150,12 +146,6 @@
 <script>
   // ============================================================
   // Chat placeholder configuration via URL query params.
-  // Example:
-  // index.html?chatBorderWidth=4&chatBorderRadius=16&chatBorderOpacity=0.6
-  //           &chatColor=145,70,255&chatTop=82&chatLeft=0&chatWidth=100&chatHeight=18
-  // All values are percentages of viewport for position/size, except
-  // border width (px) and radius (px). Defaults match the diagram:
-  // a bar spanning full width along the bottom.
   // ============================================================
   const params = new URLSearchParams(location.search);
 
@@ -169,8 +159,6 @@
   const chatBorderOpacity = num("chatBorderOpacity", 0.8); // 0-1
   const chatColor = params.get("chatColor") || "145, 70, 255"; // "r,g,b"
 
-  // Position/size as percentages of the viewport, so it scales with
-  // whatever resolution you set the OBS Browser Source to.
   const chatTop = num("chatTop", 82);      // %
   const chatLeft = num("chatLeft", 0);     // %
   const chatWidth = num("chatWidth", 100); // %
@@ -188,12 +176,10 @@
   chatEl.style.width = `${chatWidth}%`;
   chatEl.style.height = `${chatHeight}%`;
 
-  // Shrink the POV grid so it never overlaps the chat placeholder area,
-  // matching the diagram (POVs stacked above the chat bar).
   document.getElementById("pov-grid").style.bottom = `${100 - chatTop}%`;
 
   // ============================================================
-  // POV embeds (Main + sidebar) — unrelated to chat, unchanged logic.
+  // POV embeds (Main + sidebar)
   // ============================================================
   const PARENT_DOMAIN = "streameruni.onrender.com";
   const POLL_MS = 60 * 1000;
@@ -201,8 +187,9 @@
 
   let currentMainChannel = null;
 
-  function twitchEmbedSrc(channel) {
-    return `https://player.twitch.tv/?channel=${encodeURIComponent(channel)}&parent=${PARENT_DOMAIN}&muted=true`;
+  // We now accept a "muted" parameter (defaulting to true) and append autoplay options
+  function twitchEmbedSrc(channel, muted = true) {
+    return `https://player.twitch.tv/?channel=${encodeURIComponent(channel)}&parent=${PARENT_DOMAIN}&muted=${muted}&autoplay=true`;
   }
 
   function renderMain(stream) {
@@ -213,7 +200,8 @@
       return;
     }
     if (stream.channel !== currentMainChannel) {
-      wrap.innerHTML = `<iframe src="${twitchEmbedSrc(stream.channel)}" allowfullscreen></iframe>`;
+      // Main stream: muted is set to false, and allow="autoplay" is added to the iframe
+      wrap.innerHTML = `<iframe src="${twitchEmbedSrc(stream.channel, false)}" allow="autoplay; fullscreen" allowfullscreen></iframe>`;
       currentMainChannel = stream.channel;
     }
     let label = wrap.querySelector(".main-pov-label");
@@ -236,7 +224,8 @@
       }
       const existingSrc = tile.querySelector("iframe")?.src || "";
       if (!existingSrc.includes(encodeURIComponent(stream.channel))) {
-        tile.innerHTML = `<iframe src="${twitchEmbedSrc(stream.channel)}" allowfullscreen></iframe>`;
+        // Sidebar streams: muted is set to true, and allow="autoplay" is added to the iframe
+        tile.innerHTML = `<iframe src="${twitchEmbedSrc(stream.channel, true)}" allow="autoplay; fullscreen" allowfullscreen></iframe>`;
       }
       let label = tile.querySelector(".side-label");
       if (!label) {
